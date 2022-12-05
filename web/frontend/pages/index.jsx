@@ -3,17 +3,24 @@ import {
   Card, EmptyState, Layout, Page, SkeletonBodyText, TextField, Banner, Button 
 } from "@shopify/polaris";
 import {useState, useCallback} from 'react';
+import { useAuthenticatedFetch } from "../hooks";
 
 export default function HomePage() {
   const [percentage, setPercentage] = useState(0);
   const [isCouponGetted, setIsCouponGetted] = useState(false);
   const [couponList, setCouponList] = useState(['XX-XX-XX-XX']);
   const [isLoading, setIsLoading] = useState(false);
-
+	const authenticatedFetch = useAuthenticatedFetch();
   const changePercentage = useCallback((newValue) => setPercentage(newValue), []);
 
-  const savePercentage = () => {
+  const savePercentage = async () => {
     console.log(`Current percent: ${percentage}`);
+    const response = await authenticatedFetch("/api/products/count", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    console.log(response);
   }
 
   const getCoupons = async () => {
