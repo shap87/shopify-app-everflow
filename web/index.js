@@ -12,6 +12,8 @@ import productCreator from "./helpers/product-creator.js";
 import redirectToAuth from "./helpers/redirect-to-auth.js";
 import { BillingInterval } from "./helpers/ensure-billing.js";
 import { AppInstallations } from "./app_installations.js";
+import { DiscountCode } from '@shopify/shopify-api/dist/rest-resources/2022-10/index.js';
+
 
 const USE_ONLINE_TOKENS = false;
 
@@ -88,6 +90,33 @@ export async function createServer(
   // Shopify.Webhooks.Registry.process().
   // See https://github.com/Shopify/shopify-api-node/blob/main/docs/usage/webhooks.md#note-regarding-use-of-body-parsers
   // for more details.
+  console.log('PORT: ' + PORT)
+  app.get("/admin/api/2022-10/price_rules/1375355470114/discount_codes.json", async (req, res) => {
+    try {
+      const session = await Shopify.Utils.loadCurrentSession(req, res, app.get("use-online-tokens"));
+      const discounts = await DiscountCode.all({
+        session: session,
+        price_rule_id: 507328175,
+      });
+      res.status(200).json({ discounts })
+    } catch (error) {
+      res.status(500).json({ error });
+    }
+  });
+
+  app.get("/admin/api/2022-10/price_rules/1375355470114/discount_codes/1375355470114.json", async (req, res) => {
+    try {
+      const session = await Shopify.Utils.loadCurrentSession(req, res, app.get("use-online-tokens"));
+      await DiscountCode.find({
+        session: session,
+        price_rule_id: 1375355470114,
+        id: 1375355470114,
+      });
+    } catch (error) {
+      res.status(500).json({ error });
+    }
+  })
+
   app.post("/api/webhooks", async (req, res) => {
     try {
       await Shopify.Webhooks.Registry.process(req, res);

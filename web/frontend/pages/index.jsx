@@ -2,7 +2,7 @@ import { TitleBar, Loading } from "@shopify/app-bridge-react";
 import {
   Card, EmptyState, Layout, Page, SkeletonBodyText, TextField, Banner, Button 
 } from "@shopify/polaris";
-import {useState, useCallback} from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useAuthenticatedFetch } from "../hooks";
 
 export default function HomePage() {
@@ -12,6 +12,10 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false);
 	const authenticatedFetch = useAuthenticatedFetch();
   const changePercentage = useCallback((newValue) => setPercentage(newValue), []);
+
+  useEffect(() => {
+    setIsLoading(false);
+  }, [couponList]);
 
   const savePercentage = async () => {
     console.log(`Current percent: ${percentage}`);
@@ -25,11 +29,21 @@ export default function HomePage() {
 
   const getCoupons = async () => {
     setIsCouponGetted(true);
-    setCouponList(['31-32-51-64']);
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
-    }, 1000);
+
+    const response = await authenticatedFetch("/admin/api/2022-10/price_rules/1375355470114/discount_codes/1375355470114.json", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" }
+    });
+
+    // const response = await authenticatedFetch("/admin/api/2022-10/price_rules/1375355470114/discount_codes.json", {
+    //   method: "GET",
+    //   headers: { "Content-Type": "application/json" }
+    // });
+
+    console.log(response);
+
+    response.status === 200 ? setCouponList(response) : setCouponList(['Custom code: 31-32-51-64']);
   }
 
   return (
