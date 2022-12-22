@@ -41,6 +41,8 @@ export default function applyAuthMiddleware(
               }`
             );
           }
+        } else {
+          console.log(`Successfully registered ${topic} webhook to shop: ${session.shop}`);
         }
       });
 

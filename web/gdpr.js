@@ -1,4 +1,5 @@
 import { Shopify } from "@shopify/shopify-api";
+import { Orders } from './middleware/orders.js'
 
 export function setupGDPRWebHooks(path) {
   /**
@@ -76,5 +77,14 @@ export function setupGDPRWebHooks(path) {
       //   "shop_domain": "{shop}.myshopify.com"
       // }
     },
+  });
+
+  Shopify.Webhooks.Registry.addHandler("ORDERS_FULFILLED", {
+    path,
+    webhookHandler: async (_topic, shop, _body) => {
+      console.log(`Webhook called: ${_topic} for ${shop}`)
+
+      await Orders.fulfilled(shop, _body)
+    }
   });
 }

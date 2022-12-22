@@ -14,7 +14,6 @@ import { BillingInterval } from "./helpers/ensure-billing.js";
 import { AppInstallations } from "./app_installations.js";
 import { DiscountCode } from '@shopify/shopify-api/dist/rest-resources/2022-10/index.js';
 
-
 const USE_ONLINE_TOKENS = false;
 
 const PORT = parseInt(process.env.BACKEND_PORT || process.env.PORT, 10);

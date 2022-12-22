@@ -1,5 +1,5 @@
 {
-  "name": "profitable-investment-app",
+  "name": "everlow-discount-app",
   "version": "1.0.0",
   "main": "web/index.js",
   "license": "UNLICENSED",
@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@shopify/app": "3.24.1",
-    "@shopify/cli": "3.24.1"
+    "@shopify/cli": "3.24.1",
+    "dotenv": "^16.0.3"
   },
   "author": "Yurii"
 }
