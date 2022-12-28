@@ -289,7 +289,7 @@ export default function HomePage() {
           {mismatchedDiscounts && mismatchedDiscounts.length
             ? <>
               <br />
-              <p>Mismatched discounts: <TextStyle variation="strong">{mismatchedDiscounts.length}</TextStyle></p>
+              <p>Unsynced discount codes: <TextStyle variation="strong">{mismatchedDiscounts.length}</TextStyle></p>
               <br />
               <Stack>
                 {mismatchedDiscounts.map((discount, i) => {
