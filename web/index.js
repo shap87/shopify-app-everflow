@@ -2,11 +2,11 @@
 import * as dotenv from 'dotenv'
 dotenv.config()
 import { join } from "path";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { Shopify, LATEST_API_VERSION } from "@shopify/shopify-api";
-// import cron from 'cron';
+import cron from 'cron';
 
 import applyAuthMiddleware from "./middleware/auth.js";
 import verifyRequest from "./middleware/verify-request.js";
@@ -73,23 +73,133 @@ export async function createServer(
     billing: billingSettings,
   });
 
-  // cron.schedule('0 0 * * *', () => {
-  //   // task to run once per day at midnight
-  // });
-  // cron.schedule('0 9 * * *', () => {
-  //   // task to run at 9:00 AM every day
-  // });
+  const job = async () => {
+    try {
+      let shop = readFileSync('storage/shop.json');
+      // @ts-ignore
+      let shopData = JSON.parse(shop)
+      if(shopData && shopData.shop){
+        // @ts-ignore
+        const shopSessions = await Shopify.Context.SESSION_STORAGE.findSessionsByShop(shopData.shop);
+        let shopSession = null;
 
-  // new cron.CronJob(
-  //   '*/10 * * * * *',
-  //   function() {
-  //     console.log('You will see this message every second', process.env.SHOPIFY_SHOP_ORIGIN);
-  //   },
-  //   null,
-  //   true,
-  //   'America/Los_Angeles'
-  // );
+        if (shopSessions.length > 0) {
+          for (const session of shopSessions) {
+            // console.log('session', session)
+            if (session.accessToken) shopSession = session;
+          }
+        }
+
+        if(!shopSession) return
+
+        let { coupon_codes } = await getEverflowDiscounts()
+        let discounts = await getListOfDiscountCodes(shopSession, process.env.DISCOUNTS_PRICE_RULE_ID)
+        // console.log('everflowDiscounts', coupon_codes.length)
+        // console.log('shopifyDiscounts', discounts)
   
+        // @ts-ignore
+        if (coupon_codes && coupon_codes.length && discounts) {
+          const everflowDiscounts = coupon_codes
+          // @ts-ignore
+          const shopifyDiscounts = discounts || []
+  
+          const mismatched = everflowDiscounts.filter((item) => !shopifyDiscounts.some((disc) => disc.code === item.coupon_code))
+          console.log('mismatched', mismatched)
+          if (mismatched.length > 0) {
+            const dividedArrays = divideArray(mismatched, 100) || []
+    
+            if (dividedArrays.length > 0) {
+              let count = 0
+              for (const arr of dividedArrays) {
+                //process.env.DISCOUNTS_PRICE_RULE_ID
+                const response = await createDiscountCodeJob(session, process.env.DISCOUNTS_PRICE_RULE_ID, arr.map(el => ({ code: el?.coupon_code })))
+  
+                // @ts-ignore
+                data[count] = response.body.discount_code_creation
+                count += 1
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.log(error)
+    }
+  };
+
+  const scheduleUpdater = new cron.CronJob(
+    '0 0 * * *',
+    job,
+    null,
+    false,
+    'America/Los_Angeles'
+  );
+
+  app.get("/api/schedule/get", async (req, res) => {
+    const session = await Shopify.Utils.loadCurrentSession(
+      req,
+      res,
+      app.get("use-online-tokens")
+    );
+
+    let status = 200;
+    let error = null;
+    let data = null;
+
+    try {
+      if(session){
+        writeFileSync('storage/shop.json', JSON.stringify(session));
+      }
+    } catch (error) {
+      console.log(error)
+    }
+
+    try {
+      data = { 
+        running: scheduleUpdater?.running, 
+        nextDate: scheduleUpdater?.nextDate() 
+      }
+    } catch (e) {
+      console.log(e);
+      status = 500;
+      error = e.message;
+    }
+
+    res.status(status).send({ success: status === 200, error, data });
+  });
+
+  app.get("/api/schedule", async (req, res) => {
+    let status = 200;
+    let error = null;
+    let data = null;
+
+    // cron.schedule('0 0 * * *', () => {
+    //   // task to run once per day at midnight
+    // });
+    // cron.schedule('0 9 * * *', () => {
+    //   // task to run at 9:00 AM every day
+    // });
+
+    try {
+      if(scheduleUpdater.running) {
+        scheduleUpdater.stop()
+      } else {
+        scheduleUpdater.start()
+      }
+
+      data = { 
+        running: scheduleUpdater.running, 
+        nextDate: scheduleUpdater.nextDate() 
+      }
+    } catch (e) {
+      console.log(e);
+      status = 500;
+      error = e.message;
+    }
+
+    res.status(status).send({ success: status === 200, error, data });
+  });
+
   app.post("/api/webhooks", async (req, res) => {
     try {
       await Shopify.Webhooks.Registry.process(req, res);
@@ -192,12 +302,6 @@ export async function createServer(
 
     try {
       const response = await getEverflowDiscounts()
-      // write to file
-      // fs.writeFileSync('discounts/everflow-discounts.json', JSON.stringify(response));
-      // read from file
-      // const data = fs.readFileSync('discounts/array.json');
-      // const array = JSON.parse(data);
-
       // console.log('/api/discounts/everflowlist', response)
       data = response
     } catch (e) {

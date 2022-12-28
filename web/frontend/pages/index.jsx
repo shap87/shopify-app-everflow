@@ -49,6 +49,10 @@ export default function HomePage() {
   const formatter = new Intl.DateTimeFormat('en-US', options)
   const humanReadableDate = ruleSet && formatter.format(new Date(ruleSet?.updated_at))
 
+  const [schedule, setSchedule] = useState(false)
+  const contentStatus = schedule && schedule.running ? 'Deactivate' : 'Activate'
+  const textStatus = schedule && schedule.running ? 'activated' : 'deactivated'
+
   useEffect(() => {
     updateDiscountInformation()
   }, [])
@@ -67,6 +71,8 @@ export default function HomePage() {
     ) {
       checkForMismatchedCodes(everflowDisc.coupon_codes, shopifyDisc)
     }
+
+    await scheduleGet()
   }
 
   const checkForMismatchedCodes = async (everflowDisc, shopifyDisc) => {
@@ -194,6 +200,52 @@ export default function HomePage() {
     }
   }
 
+  const scheduleGet = async () => {
+    try {
+      const response = await fetch("/api/schedule/get")
+      let { data } = await response.json()
+
+      console.log('scheduleGet data', data)
+      if (data) {
+        setSchedule(data)
+      } else {
+        setSchedule(false)
+      }
+    } catch (error) {
+      console.log(error)
+      setSchedule(false)
+    }
+  }
+
+  const scheduleUpdate = async () => {
+    try {
+      const response = await fetch("/api/schedule")
+      let { data } = await response.json()
+
+      console.log('data', data)
+      if (data) {
+        setSchedule(data)
+
+        if (data && data.running) {
+          setToastProps({
+            content: "Automatic update enabled",
+            error: false,
+          })
+        } else {
+          setToastProps({
+            content: "Automatic update disabled",
+            error: false,
+          })
+        }
+      } else {
+        setSchedule(false)
+      }
+    } catch (error) {
+      console.log(error)
+      setSchedule(false)
+    }
+  }
+
   const toastMarkup = toastProps.content && (
     <Toast {...toastProps} onDismiss={() => setToastProps(emptyToastProps)} />
   )
@@ -205,6 +257,29 @@ export default function HomePage() {
         title="Info"
         sectioned
       >
+        {schedule
+          ? <SettingToggle
+            action={{
+              content: contentStatus,
+              onAction: scheduleUpdate,
+            }}
+            enabled={schedule?.running}
+          >
+            Automatic update is{' '}
+            <TextStyle variation="strong">
+              {textStatus}
+            </TextStyle>.
+            {schedule && schedule.running && schedule.nextDate
+              ? <> Next update: {' '}<TextStyle variation="strong">
+                {schedule.nextDate ? formatter.format(new Date(schedule.nextDate)) : null}
+              </TextStyle></>
+              : null
+            }
+
+          </SettingToggle>
+          : null
+        }
+
         {custSegmentLoading
           ? <SettingToggle>
             <SkeletonBodyText lines={1} />
