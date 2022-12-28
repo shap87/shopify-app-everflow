@@ -1,18 +1,27 @@
 // @ts-check
+import * as dotenv from 'dotenv'
+dotenv.config()
 import { join } from "path";
 import { readFileSync } from "fs";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { Shopify, LATEST_API_VERSION } from "@shopify/shopify-api";
+// import cron from 'cron';
 
 import applyAuthMiddleware from "./middleware/auth.js";
 import verifyRequest from "./middleware/verify-request.js";
 import { setupGDPRWebHooks } from "./gdpr.js";
-import productCreator from "./helpers/product-creator.js";
 import redirectToAuth from "./helpers/redirect-to-auth.js";
-import { BillingInterval } from "./helpers/ensure-billing.js";
 import { AppInstallations } from "./app_installations.js";
-import { DiscountCode } from '@shopify/shopify-api/dist/rest-resources/2022-10/index.js';
+import { 
+  createCustomerSegment, 
+  createDiscountCodeJob, 
+  getCountOfDiscountCodes, 
+  getCustomerSegment, 
+  getListOfDiscountCodes, 
+  getPriceRule 
+} from './helpers/discounts.js'
+import { divideArray, getEverflowDiscounts } from './helpers/everflow.js'
 
 const USE_ONLINE_TOKENS = false;
 
@@ -38,12 +47,6 @@ Shopify.Context.initialize({
   ...(process.env.SHOP_CUSTOM_DOMAIN && {CUSTOM_SHOP_DOMAINS: [process.env.SHOP_CUSTOM_DOMAIN]}),
 });
 
-// NOTE: If you choose to implement your own storage strategy using
-// Shopify.Session.CustomSessionStorage, you MUST implement the optional
-// findSessionsByShopCallback and deleteSessionsCallback methods.  These are
-// required for the app_installations.js component in this template to
-// work properly.
-
 Shopify.Webhooks.Registry.addHandler("APP_UNINSTALLED", {
   path: "/api/webhooks",
   webhookHandler: async (_topic, shop, _body) => {
@@ -51,33 +54,18 @@ Shopify.Webhooks.Registry.addHandler("APP_UNINSTALLED", {
   },
 });
 
-// The transactions with Shopify will always be marked as test transactions, unless NODE_ENV is production.
-// See the ensureBilling helper to learn more about billing in this template.
 const BILLING_SETTINGS = {
   required: false,
-  // This is an example configuration that would do a one-time charge for $5 (only USD is currently supported)
-  // chargeName: "My Shopify One-Time Charge",
-  // amount: 5.0,
-  // currencyCode: "USD",
-  // interval: BillingInterval.OneTime,
 };
 
-// This sets up the mandatory GDPR webhooks. You’ll need to fill in the endpoint
-// in the “GDPR mandatory webhooks” section in the “App setup” tab, and customize
-// the code when you store customer data.
-//
-// More details can be found on shopify.dev:
-// https://shopify.dev/apps/webhooks/configuration/mandatory-webhooks
 setupGDPRWebHooks("/api/webhooks");
 
-// export for test use only
 export async function createServer(
   root = process.cwd(),
   isProd = process.env.NODE_ENV === "production",
   billingSettings = BILLING_SETTINGS
 ) {
   const app = express();
-
   app.set("use-online-tokens", USE_ONLINE_TOKENS);
   app.use(cookieParser(Shopify.Context.API_SECRET_KEY));
 
@@ -85,37 +73,23 @@ export async function createServer(
     billing: billingSettings,
   });
 
-  // Do not call app.use(express.json()) before processing webhooks with
-  // Shopify.Webhooks.Registry.process().
-  // See https://github.com/Shopify/shopify-api-node/blob/main/docs/usage/webhooks.md#note-regarding-use-of-body-parsers
-  // for more details.
-  console.log('PORT: ' + PORT)
-  app.get("/admin/api/2022-10/price_rules/1375355470114/discount_codes.json", async (req, res) => {
-    try {
-      const session = await Shopify.Utils.loadCurrentSession(req, res, app.get("use-online-tokens"));
-      const discounts = await DiscountCode.all({
-        session: session,
-        price_rule_id: 507328175,
-      });
-      res.status(200).json({ discounts })
-    } catch (error) {
-      res.status(500).json({ error });
-    }
-  });
+  // cron.schedule('0 0 * * *', () => {
+  //   // task to run once per day at midnight
+  // });
+  // cron.schedule('0 9 * * *', () => {
+  //   // task to run at 9:00 AM every day
+  // });
 
-  app.get("/admin/api/2022-10/price_rules/1375355470114/discount_codes/1375355470114.json", async (req, res) => {
-    try {
-      const session = await Shopify.Utils.loadCurrentSession(req, res, app.get("use-online-tokens"));
-      await DiscountCode.find({
-        session: session,
-        price_rule_id: 1375355470114,
-        id: 1375355470114,
-      });
-    } catch (error) {
-      res.status(500).json({ error });
-    }
-  })
-
+  // new cron.CronJob(
+  //   '*/10 * * * * *',
+  //   function() {
+  //     console.log('You will see this message every second', process.env.SHOPIFY_SHOP_ORIGIN);
+  //   },
+  //   null,
+  //   true,
+  //   'America/Los_Angeles'
+  // );
+  
   app.post("/api/webhooks", async (req, res) => {
     try {
       await Shopify.Webhooks.Registry.process(req, res);
@@ -128,29 +102,7 @@ export async function createServer(
     }
   });
 
-  // All endpoints after this point will require an active session
-  app.use(
-    "/api/*",
-    verifyRequest(app, {
-      billing: billingSettings,
-    })
-  );
-
-  app.get("/api/products/count", async (req, res) => {
-    const session = await Shopify.Utils.loadCurrentSession(
-      req,
-      res,
-      app.get("use-online-tokens")
-    );
-    const { Product } = await import(
-      `@shopify/shopify-api/dist/rest-resources/${Shopify.Context.API_VERSION}/index.js`
-    );
-
-    const countData = await Product.count({ session });
-    res.status(200).send(countData);
-  });
-
-  app.get("/api/products/create", async (req, res) => {
+  app.get("/api/customer-segment/create", async (req, res) => {
     const session = await Shopify.Utils.loadCurrentSession(
       req,
       res,
@@ -158,19 +110,208 @@ export async function createServer(
     );
     let status = 200;
     let error = null;
+    let data = null;
 
     try {
-      await productCreator(session);
+      console.log('CREATE CUSTOMER SEGMENT')
+      // add customer segment
+      const response = await createCustomerSegment(session, "everflow_linked", "customer_tags NOT CONTAINS 'everflow_linked'")
+      data = await response
+
+      // let priceRule = await createPriceRule(session)
+      // console.log('priceRule', priceRule)
+      // body
+      // headers
+      // pageInfo
+
+      // let priceRuleRes = await priceRule
+      // console.log('priceRuleRes', priceRuleRes)
     } catch (e) {
-      console.log(`Failed to process products/create: ${e.message}`);
+      console.log(`Failed to process /api/customer-segment/create: ${e.message}`);
       status = 500;
       error = e.message;
     }
-    res.status(status).send({ success: status === 200, error });
+
+    res.status(status).send({ success: status === 200, error, data });
   });
 
-  // All endpoints after this point will have access to a request.body
-  // attribute, as a result of the express.json() middleware
+  app.get("/api/customer-segment/get", async (req, res) => {
+    const session = await Shopify.Utils.loadCurrentSession(
+      req,
+      res,
+      app.get("use-online-tokens")
+    );
+    let status = 200;
+    let error = null;
+    let data = null;
+
+    try {
+      const response = await getCustomerSegment(session, `gid://shopify/Segment/${process.env.CUSTOMER_SEGMENT_ID}`)
+      data = await response
+    } catch (e) {
+      console.log(`Failed to process /api/customer-segment/get: ${e.message}`);
+      status = 500;
+      error = e.message;
+    }
+
+    res.status(status).send({ success: status === 200, error, data });
+  });
+
+  app.get("/api/discounts/count", async (req, res) => {
+    const session = await Shopify.Utils.loadCurrentSession(
+      req,
+      res,
+      app.get("use-online-tokens")
+    );
+    let status = 200;
+    let error = null;
+    let data = null;
+
+    try {
+      const response = await getCountOfDiscountCodes(session, process.env.DISCOUNTS_PRICE_RULE_ID)
+      data = response
+    } catch (e) {
+      console.log(`Failed to process /api/discounts/count: ${e.message}`);
+      status = 500;
+      error = e.message;
+    }
+
+    res.status(status).send({ success: status === 200, error, data });
+  });
+
+  app.get("/api/discounts/everflowlist", async (req, res) => {
+    const session = await Shopify.Utils.loadCurrentSession(
+      req,
+      res,
+      app.get("use-online-tokens")
+    );
+
+    let status = 200;
+    let error = null;
+    let data = null;
+
+    try {
+      const response = await getEverflowDiscounts()
+      // write to file
+      // fs.writeFileSync('discounts/everflow-discounts.json', JSON.stringify(response));
+      // read from file
+      // const data = fs.readFileSync('discounts/array.json');
+      // const array = JSON.parse(data);
+
+      // console.log('/api/discounts/everflowlist', response)
+      data = response
+    } catch (e) {
+      console.log(`Failed to process /api/discounts/everflowlist: ${e.message}`);
+      status = 500;
+      error = e.message;
+    }
+
+    res.status(status).send({ success: status === 200, error, data });
+  });
+
+  app.get("/api/discounts/create", async (req, res) => {
+    const session = await Shopify.Utils.loadCurrentSession(
+      req,
+      res,
+      app.get("use-online-tokens")
+    );
+
+    let status = 200;
+    let error = null;
+    let data = [];
+
+    try {
+      let { coupon_codes } = await getEverflowDiscounts()
+      let discounts = await getListOfDiscountCodes(session, process.env.DISCOUNTS_PRICE_RULE_ID)
+      console.log('everflowDiscounts', coupon_codes.length)
+      console.log('shopifyDiscounts', discounts)
+
+      // @ts-ignore
+      if (coupon_codes && coupon_codes.length && discounts) {
+        const everflowDiscounts = coupon_codes
+        // @ts-ignore
+        const shopifyDiscounts = discounts || []
+
+        const mismatched = everflowDiscounts.filter((item) => !shopifyDiscounts.some((disc) => disc.code === item.coupon_code))
+        // console.log('mismatched', mismatched)
+        if (mismatched.length > 0) {
+          const dividedArrays = divideArray(mismatched, 100) || []
+  
+          if (dividedArrays.length > 0) {
+            let count = 0
+            for (const arr of dividedArrays) {
+              //process.env.DISCOUNTS_PRICE_RULE_ID
+              const response = await createDiscountCodeJob(session, process.env.DISCOUNTS_PRICE_RULE_ID, arr.map(el => ({ code: el?.coupon_code })))
+
+              // @ts-ignore
+              data[count] = response.body.discount_code_creation
+              count += 1
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.log(`Failed to process /api/discounts/create: ${e.message}`);
+      status = 500;
+      error = e.message;
+    }
+
+    res.status(status).send({ success: status === 200, error, data });
+  });
+
+  app.get("/api/discounts/list", async (req, res) => {
+    const session = await Shopify.Utils.loadCurrentSession(
+      req,
+      res,
+      app.get("use-online-tokens")
+    );
+
+    let status = 200;
+    let error = null;
+    let data = null;
+
+    try {
+      const response = await getListOfDiscountCodes(session, process.env.DISCOUNTS_PRICE_RULE_ID)
+      // console.log('response', response)
+      data = response
+    } catch (e) {
+      console.log(`Failed to process /api/discounts/list: ${e.message}`);
+      status = 500;
+      error = e.message;
+    }
+
+    res.status(status).send({ success: status === 200, error, data });
+  });
+
+  app.get("/api/ruleset/get", async (req, res) => {
+    const session = await Shopify.Utils.loadCurrentSession(
+      req,
+      res,
+      app.get("use-online-tokens")
+    );
+    let status = 200;
+    let error = null;
+    let data = null;
+
+    try {
+      const response = await getPriceRule(session, process.env.DISCOUNTS_PRICE_RULE_ID)
+      data = response
+    } catch (e) {
+      console.log(`Failed to process /api/ruleset/get: ${e.message}`);
+      status = 500;
+      error = e.message;
+    }
+
+    res.status(status).send({ success: status === 200, error, data });
+  });
+
+  app.use(
+    "/api/*",
+    verifyRequest(app, {
+      billing: billingSettings,
+    })
+  );
+
   app.use(express.json());
 
   app.use((req, res, next) => {

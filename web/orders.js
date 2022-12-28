@@ -1,6 +1,6 @@
 import { Shopify } from "@shopify/shopify-api";
-import { addCustomerTags } from '../helpers/customer.js'
-import getEverflowDiscount from '../helpers/everflow.js';
+import { addCustomerTags } from './helpers/customer.js'
+import { getEverflowDiscount } from './helpers/everflow.js';
 
 export const Orders = {
   getEverflowDiscounts: async function(arrayOfDiscounts = []) {
@@ -29,6 +29,7 @@ export const Orders = {
   addTagToCustomer: async function (session, customerId, tag = 'everflow_linked') {
     try {
       const response = await addCustomerTags(session, customerId, tag);
+      // console.log('response', response)
       console.log(`Tag ${tag} added for customer ${customerId}`, response?.body)
       return response
     } catch (e) {
@@ -43,30 +44,25 @@ export const Orders = {
 
     if (shopSessions.length > 0) {
       for (const session of shopSessions) {
-        if (session.isActive() && session.accessToken) shopSession = session;
-        //  Session {
-        //  id: 'offline_dermeleve-test.myshopify.com',
-        //  shop: 'dermeleve-test.myshopify.com',
-        //  state: 'offline_715026707320930',
-        //  isOnline: false,
-        //  scope: 'read_fulfillments,write_products,write_customers,write_discounts,write_price_rules,read_product_listings,write_orders,write_draft_orders',
-        //  accessToken: 'shpua_90c61d1b638d2ace36cd97e7efd7263a'
-        //  }
+        console.log('session', session)
+        if (session.accessToken) shopSession = session;
       }
     }
-
+    console.log('shopDomain', shopDomain)
+    console.log('shopSession', shopSession)
     try {
       const payload = JSON.parse(_body);
       // discount applyed for order
-      if(payload && payload.discount_applications && payload.discount_applications.length > 0){
+      if(shopSession && payload && payload.discount_applications && payload.discount_applications.length > 0){
         if(payload.customer && !payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')){
           // const discounts = [...payload.discount_applications, { title: '5CZMC1Q' }, { title: '' }]; // static discounts for testing
 
           const discounts = payload.discount_applications;
           console.log('Order applyed discounts', discounts);
+          console.log('payload customer', payload);
 
           const everflowDiscount = await this.getEverflowDiscounts(discounts.filter(d => d).map(d => d.title))
-          console.log('Everflow mathced discount', everflowDiscount)
+          console.log('Everflow matched discount', everflowDiscount)
 
           // order discount matched with everflow discount
           if(everflowDiscount){
@@ -78,7 +74,7 @@ export const Orders = {
             console.log('Add customer tag response body', response?.body)
 
             if(!response || response.message){ // error
-              return false
+              throw new Error(`${response.message}`);
             }
 
             return true
@@ -86,6 +82,8 @@ export const Orders = {
         } else {
           return true
         }
+      } else {
+        throw new Error(`Error\n check (shopSession and payload) in fulfilled() method`);
       }
     } catch (error) {
       console.log('err', error)
