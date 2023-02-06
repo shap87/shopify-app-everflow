@@ -22,6 +22,7 @@ import {
   getPriceRule 
 } from './helpers/discounts.js'
 import { divideArray, getEverflowDiscounts } from './helpers/everflow.js'
+import { checkIfProductsInOrder, ordersByQuery } from './helpers/customer.js'
 
 const USE_ONLINE_TOKENS = false;
 
@@ -73,51 +74,58 @@ export async function createServer(
     billing: billingSettings,
   });
 
+  const generateSession = async () => {
+    let shop = readFileSync('storage/shop.json');
+    // @ts-ignore
+    let shopData = JSON.parse(shop)
+    if(shopData && shopData.shop){
+      // @ts-ignore
+      const shopSessions = await Shopify.Context.SESSION_STORAGE.findSessionsByShop(shopData.shop);
+      let shopSession = null;
+  
+      if (shopSessions.length > 0) {
+        for (const session of shopSessions) {
+          if (session.accessToken) shopSession = session;
+        }
+      }
+
+      return shopSession
+    }
+  
+    return null
+  }
+
   const job = async () => {
     try {
-      let shop = readFileSync('storage/shop.json');
+      const session = await generateSession();
+
+      if(!session) return
+
+      let { coupon_codes } = await getEverflowDiscounts()
+      let discounts = await getListOfDiscountCodes(session, process.env.DISCOUNTS_PRICE_RULE_ID)
+      // console.log('everflowDiscounts', coupon_codes.length)
+      // console.log('shopifyDiscounts', discounts)
+
       // @ts-ignore
-      let shopData = JSON.parse(shop)
-      if(shopData && shopData.shop){
+      if (coupon_codes && coupon_codes.length && discounts) {
+        const everflowDiscounts = coupon_codes
         // @ts-ignore
-        const shopSessions = await Shopify.Context.SESSION_STORAGE.findSessionsByShop(shopData.shop);
-        let shopSession = null;
+        const shopifyDiscounts = discounts || []
 
-        if (shopSessions.length > 0) {
-          for (const session of shopSessions) {
-            // console.log('session', session)
-            if (session.accessToken) shopSession = session;
-          }
-        }
+        const mismatched = everflowDiscounts.filter((item) => !shopifyDiscounts.some((disc) => disc.code === item.coupon_code))
+        console.log('mismatched', mismatched)
+        if (mismatched.length > 0) {
+          const dividedArrays = divideArray(mismatched, 100) || []
+  
+          if (dividedArrays.length > 0) {
+            let count = 0
+            for (const arr of dividedArrays) {
+              //process.env.DISCOUNTS_PRICE_RULE_ID
+              const response = await createDiscountCodeJob(session, process.env.DISCOUNTS_PRICE_RULE_ID, arr.map(el => ({ code: el?.coupon_code })))
 
-        if(!shopSession) return
-
-        let { coupon_codes } = await getEverflowDiscounts()
-        let discounts = await getListOfDiscountCodes(shopSession, process.env.DISCOUNTS_PRICE_RULE_ID)
-        // console.log('everflowDiscounts', coupon_codes.length)
-        // console.log('shopifyDiscounts', discounts)
-  
-        // @ts-ignore
-        if (coupon_codes && coupon_codes.length && discounts) {
-          const everflowDiscounts = coupon_codes
-          // @ts-ignore
-          const shopifyDiscounts = discounts || []
-  
-          const mismatched = everflowDiscounts.filter((item) => !shopifyDiscounts.some((disc) => disc.code === item.coupon_code))
-          console.log('mismatched', mismatched)
-          if (mismatched.length > 0) {
-            const dividedArrays = divideArray(mismatched, 100) || []
-    
-            if (dividedArrays.length > 0) {
-              let count = 0
-              for (const arr of dividedArrays) {
-                //process.env.DISCOUNTS_PRICE_RULE_ID
-                const response = await createDiscountCodeJob(session, process.env.DISCOUNTS_PRICE_RULE_ID, arr.map(el => ({ code: el?.coupon_code })))
-  
-                // @ts-ignore
-                data[count] = response.body.discount_code_creation
-                count += 1
-              }
+              // @ts-ignore
+              data[count] = response.body.discount_code_creation
+              count += 1
             }
           }
         }
@@ -134,6 +142,65 @@ export async function createServer(
     false,
     'America/Los_Angeles'
   );
+
+  app.get("/api/proxy/verifyDiscount", async (req, res) => {
+    const session = await generateSession();
+
+    let status = 200;
+    let error = null;
+    let data = null;
+    let message = null;
+
+    let { query } = req.query;
+
+    if(!query) {
+      status = 404;
+      error = "Please provide query.";
+      data = null;
+
+      res.status(status).send({ success: status === 200, error, data });
+      return
+    }
+    
+    if(!session) {
+      status = 500;
+      error = "Application session error.";
+      data = null;
+
+      res.status(status).send({ success: status === 200, error, data });
+      return
+    }
+
+    try {
+      const orders = await ordersByQuery(session, query);
+      // @ts-ignore
+      data = await orders;
+
+      if(data && data.response && data.response && data.response.errors){
+        // @ts-ignore
+        error = data.response.errors
+        data = null
+        status = 404
+      }
+
+      if(data){
+        const valid = checkIfProductsInOrder(data);
+
+        if(!valid){
+          error = 'This account already used discount.';
+          status = 400
+        }
+      }
+
+      if(data && Array.isArray(data) && data.length == 0){
+        message = `There are no orders with ${query}`
+      }
+    } catch (error) {
+      error = error
+    }
+
+    res.status(status).send({ success: status === 200, error, data, message });
+  });
 
   app.get("/api/schedule/get", async (req, res) => {
     const session = await Shopify.Utils.loadCurrentSession(
@@ -172,13 +239,6 @@ export async function createServer(
     let status = 200;
     let error = null;
     let data = null;
-
-    // cron.schedule('0 0 * * *', () => {
-    //   // task to run once per day at midnight
-    // });
-    // cron.schedule('0 9 * * *', () => {
-    //   // task to run at 9:00 AM every day
-    // });
 
     try {
       if(scheduleUpdater.running) {
@@ -290,19 +350,12 @@ export async function createServer(
   });
 
   app.get("/api/discounts/everflowlist", async (req, res) => {
-    const session = await Shopify.Utils.loadCurrentSession(
-      req,
-      res,
-      app.get("use-online-tokens")
-    );
-
     let status = 200;
     let error = null;
     let data = null;
 
     try {
       const response = await getEverflowDiscounts()
-      // console.log('/api/discounts/everflowlist', response)
       data = response
     } catch (e) {
       console.log(`Failed to process /api/discounts/everflowlist: ${e.message}`);
