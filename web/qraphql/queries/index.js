@@ -1,9 +1,3 @@
-// segment(id: "gid://shopify/Segment/123") {
-//     id
-//     name
-//     query
-//   }
-// , query: "query=name:everflow_linked"
 export const CUSTOMER_SEGMENTS_GET_QUERY = `
   segments(first: $first, query: $query) {
     edges {
@@ -20,20 +14,54 @@ export const CUSTOMER_SEGMENTS_GET_QUERY = `
     }
   }
 `
-// gid://shopify/Segment/498139660578
-// query {
-//   segment(id: "gid://shopify/Segment/498139660578") {
-//     id
-//     name
-//     query
-//   }
-// }
+
 export const CUSTOMER_SEGMENT_GET_QUERY = `
-query ($id: ID!) {
+  query ($id: ID!) {
     segment(id: $id) {
       id
       name
       query
+    }
+  }
+`
+
+export const ORDERS_GET_QUERY = `
+  query ($first: Int!, $query: String, $after: String) {
+    orders(first: $first, query: $query, after: $after) {
+      edges {
+        cursor
+        node {
+          id
+          tags
+          
+          shippingAddress {
+            address1
+            address2
+            city
+            company
+            country
+            firstName
+            lastName
+            phone
+            province
+            zip
+          }
+
+          lineItems(first: 250) {
+            edges {
+              cursor
+              node {
+                product {
+                  id
+                }
+              }
+            }
+          }
+        }
+      }
+      pageInfo {
+        hasNextPage, endCursor
+      }
     }
   }
 `

@@ -1,6 +1,10 @@
+// @ts-check
+import * as dotenv from 'dotenv'
+dotenv.config()
 import { Shopify } from "@shopify/shopify-api";
 import { addCustomerTags } from './helpers/customer.js'
 import { getEverflowDiscount } from './helpers/everflow.js';
+import { DataType } from '@shopify/shopify-api';
 
 export const Orders = {
   getEverflowDiscounts: async function(arrayOfDiscounts = []) {
@@ -38,7 +42,35 @@ export const Orders = {
     }
   },
 
+  orderTag: async function (session, payload) {
+    try {
+      const productIds = payload.line_items.map(p => p.product_id.toString());
+      const discountProductsArray = process.env.SAMPLE_PRODUCTS? process.env.SAMPLE_PRODUCTS.split(',') : [7415645274157, 7391379488813];
+      const contains = discountProductsArray.some(id => productIds.includes(id.toString()));
+      const orderId = payload.id;
+      const orderTags = payload.tags;
+
+      if(contains) {
+        const tag = [payload.shipping_address?.address1, payload.shipping_address?.zip].join('').replace(/\s/g, '').slice(0, 40);
+        const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
+        
+        await client.put({ 
+          path: `orders/${orderId}`, 
+          data: JSON.stringify({
+            order: {
+              id: orderId,
+              tags: `${orderTags}, ${tag}`,
+            }
+          }), type: DataType.JSON
+        })
+      }
+    } catch (error) {
+      console.log(error)
+    }
+  },
+
   fulfilled: async function (shopDomain, _body) {
+    // @ts-ignore
     const shopSessions = await Shopify.Context.SESSION_STORAGE.findSessionsByShop(shopDomain);
     let shopSession = null;
 
@@ -48,15 +80,18 @@ export const Orders = {
         if (session.accessToken) shopSession = session;
       }
     }
-    console.log('shopDomain', shopDomain)
-    console.log('shopSession', shopSession)
+    // console.log('shopDomain', shopDomain)
+    // console.log('shopSession', shopSession)
     try {
       const payload = JSON.parse(_body);
+      
       // discount applyed for order
+      if(shopSession && payload) {
+        this.orderTag(shopSession, payload)
+      }
       if(shopSession && payload && payload.discount_applications && payload.discount_applications.length > 0){
         if(payload.customer && !payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')){
           // const discounts = [...payload.discount_applications, { title: '5CZMC1Q' }, { title: '' }]; // static discounts for testing
-
           const discounts = payload.discount_applications;
           console.log('Order applyed discounts', discounts);
           console.log('payload customer', payload);
@@ -82,8 +117,6 @@ export const Orders = {
         } else {
           return true
         }
-      } else {
-        throw new Error(`Error\n check (shopSession and payload) in fulfilled() method`);
       }
     } catch (error) {
       console.log('err', error)
