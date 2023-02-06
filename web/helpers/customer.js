@@ -47,29 +47,6 @@ export async function customerByEmail(session, customerEmail) {
   return body
 }
 
-// query fetchLineItems($orderId: ID!, $afterCursor: String) {
-//   node(id: $orderId) {
-//     ... on Order {
-//       lineItems(first: 10, after: $afterCursor) {
-//         edges {
-//           node {
-//             title
-//             variant {
-//               title
-//               sku
-//               price
-//             }
-//           }
-//           cursor
-//         }
-//         pageInfo {
-//           hasNextPage
-//         }
-//       }
-//     }
-//   }
-// }
-
 export async function ordersByQuery(session, query, first = 1) {
   if(!query || !session) throw new Error(`Error\n check (session, tag) in customerByEmail() method`);
 

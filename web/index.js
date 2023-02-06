@@ -98,7 +98,7 @@ export async function createServer(
   const job = async () => {
     try {
       const session = await generateSession();
-      console.log('seesion', session)
+
       if(!session) return
 
       let { coupon_codes } = await getEverflowDiscounts()
