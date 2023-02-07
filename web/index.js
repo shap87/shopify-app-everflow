@@ -67,6 +67,7 @@ export async function createServer(
   billingSettings = BILLING_SETTINGS
 ) {
   const app = express();
+
   app.set("use-online-tokens", USE_ONLINE_TOKENS);
   app.use(cookieParser(Shopify.Context.API_SECRET_KEY));
 
@@ -462,12 +463,15 @@ export async function createServer(
     res.status(status).send({ success: status === 200, error, data });
   });
 
-  app.use(
-    "/api/*",
-    verifyRequest(app, {
-      billing: billingSettings,
-    })
-  );
+  app.use("/api/*", (req, res, next) => {
+    if(req.query.path_prefix) {
+      next()
+    } else {
+      verifyRequest(app, {
+        billing: billingSettings,
+      })
+    }
+  });
 
   app.use(express.json());
 
@@ -493,38 +497,41 @@ export async function createServer(
     const serveStatic = await import("serve-static").then(
       ({ default: fn }) => fn
     );
+
     app.use(compression());
     app.use(serveStatic(PROD_INDEX_PATH, { index: false }));
   }
 
-  app.use("/*", async (req, res, next) => {
-    if (typeof req.query.shop !== "string") {
-      res.status(500);
-      return res.send("No shop provided");
+  app.use("/*", async (req, res, next) => { // "/*", async (req, res, next) => {
+    if(!req.query.path_prefix) {
+      if (typeof req.query.shop !== "string") {
+        res.status(500);
+        return res.send("No shop provided");
+      }
+  
+      const shop = Shopify.Utils.sanitizeShop(req.query.shop);
+      const appInstalled = await AppInstallations.includes(shop);
+  
+      if (!appInstalled && !req.originalUrl.match(/^\/exitiframe/i)) {
+        return redirectToAuth(req, res, app);
+      }
+  
+      if (Shopify.Context.IS_EMBEDDED_APP && req.query.embedded !== "1") {
+        const embeddedUrl = Shopify.Utils.getEmbeddedAppUrl(req);
+  
+        return res.redirect(embeddedUrl + req.path);
+      }
+  
+      const htmlFile = join(
+        isProd ? PROD_INDEX_PATH : DEV_INDEX_PATH,
+        "index.html"
+      );
+  
+      return res
+        .status(200)
+        .set("Content-Type", "text/html")
+        .send(readFileSync(htmlFile));
     }
-
-    const shop = Shopify.Utils.sanitizeShop(req.query.shop);
-    const appInstalled = await AppInstallations.includes(shop);
-
-    if (!appInstalled && !req.originalUrl.match(/^\/exitiframe/i)) {
-      return redirectToAuth(req, res, app);
-    }
-
-    if (Shopify.Context.IS_EMBEDDED_APP && req.query.embedded !== "1") {
-      const embeddedUrl = Shopify.Utils.getEmbeddedAppUrl(req);
-
-      return res.redirect(embeddedUrl + req.path);
-    }
-
-    const htmlFile = join(
-      isProd ? PROD_INDEX_PATH : DEV_INDEX_PATH,
-      "index.html"
-    );
-
-    return res
-      .status(200)
-      .set("Content-Type", "text/html")
-      .send(readFileSync(htmlFile));
   });
 
   return { app };
