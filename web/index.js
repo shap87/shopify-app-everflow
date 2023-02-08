@@ -76,21 +76,26 @@ export async function createServer(
   });
 
   const generateSession = async () => {
-    let shop = readFileSync('storage/shop.json');
-    // @ts-ignore
-    let shopData = JSON.parse(shop)
-    if(shopData && shopData.shop){
+    try {
+      let shop = readFileSync('storage/shop.json');
       // @ts-ignore
-      const shopSessions = await Shopify.Context.SESSION_STORAGE.findSessionsByShop(shopData.shop);
-      let shopSession = null;
-  
-      if (shopSessions.length > 0) {
-        for (const session of shopSessions) {
-          if (session.accessToken) shopSession = session;
+      let shopData = JSON.parse(shop)
+      console.log('generateSession() shopData', shopData)
+      if(shopData && shopData.shop){
+        // @ts-ignore
+        const shopSessions = await Shopify.Context.SESSION_STORAGE.findSessionsByShop(shopData.shop);
+        let shopSession = null;
+    
+        if (shopSessions.length > 0) {
+          for (const session of shopSessions) {
+            if (session.accessToken) shopSession = session;
+          }
         }
+  
+        return shopSession
       }
-
-      return shopSession
+    } catch (error) {
+      console.log('generateSession() error', error)
     }
   
     return null
