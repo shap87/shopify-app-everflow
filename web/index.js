@@ -146,14 +146,14 @@ export async function createServer(
 
   app.get("/api/proxy/verifyDiscount", async (req, res) => {
     const session = await generateSession();
-
+    console.log('app.get("/api/proxy/verifyDiscount", session', session)
     let status = 200;
     let error = null;
     let data = null;
     let message = null;
 
     let { query } = req.query;
-
+    console.log('app.get("/api/proxy/verifyDiscount", query', query)
     if(!query) {
       status = 404;
       error = "Please provide query.";
@@ -176,7 +176,7 @@ export async function createServer(
       const orders = await ordersByQuery(session, query);
       // @ts-ignore
       data = await orders;
-
+      console.log('app.get("/api/proxy/verifyDiscount", data', data)
       if(data && data.response && data.response && data.response.errors){
         // @ts-ignore
         error = data.response.errors
@@ -186,7 +186,7 @@ export async function createServer(
 
       if(data){
         const valid = checkIfProductsInOrder(data);
-
+        console.log('app.get("/api/proxy/verifyDiscount", valid', valid)
         if(!valid){
           error = 'This account already used discount.';
           status = 400
@@ -197,6 +197,7 @@ export async function createServer(
         message = `There are no orders with ${query}`
       }
     } catch (error) {
+      console.log('app.get("/api/proxy/verifyDiscount", error', error)
       error = error
     }
 
@@ -464,6 +465,7 @@ export async function createServer(
   });
 
   app.use("/api/*", (req, res, next) => {
+    console.log('app.use("/api/*", req.query.path_prefix', req.query.path_prefix)
     if(req.query.path_prefix) {
       next()
     } else {
@@ -491,6 +493,7 @@ export async function createServer(
   });
 
   if (isProd) {
+    console.log('isProd', isProd)
     const compression = await import("compression").then(
       ({ default: fn }) => fn
     );
@@ -504,6 +507,7 @@ export async function createServer(
 
   app.use("/*", async (req, res, next) => { // "/*", async (req, res, next) => {
     if(!req.query.path_prefix) {
+      console.log('app.use("/*", !req.query.path_prefix', !req.query.path_prefix)
       if (typeof req.query.shop !== "string") {
         res.status(500);
         return res.send("No shop provided");

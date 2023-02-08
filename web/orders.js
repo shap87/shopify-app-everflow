@@ -43,17 +43,27 @@ export const Orders = {
   },
 
   orderTag: async function (session, payload) {
+    console.log('orderTag() session', session)
+    console.log('orderTag() session', payload)
     try {
       const productIds = payload.line_items.map(p => p.product_id.toString());
       const discountProductsArray = process.env.SAMPLE_PRODUCTS? process.env.SAMPLE_PRODUCTS.split(',') : [7415645274157, 7391379488813];
       const contains = discountProductsArray.some(id => productIds.includes(id.toString()));
       const orderId = payload.id;
       const orderTags = payload.tags;
+      
+      console.log('orderTag() productIds', productIds)
+      console.log('orderTag() discountProductsArray', discountProductsArray)
+      console.log('orderTag() contains', contains)
+      console.log('orderTag() orderId', orderId)
+      console.log('orderTag() orderTags', orderTags)
 
       if(contains) {
         const tag = [payload.shipping_address?.address1, payload.shipping_address?.zip].join('').replace(/\s/g, '').slice(0, 40);
         const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
-        
+        console.log('orderTag() tag', tag)
+        console.log('orderTag() tag', tag)
+
         await client.put({ 
           path: `orders/${orderId}`, 
           data: JSON.stringify({
@@ -65,7 +75,7 @@ export const Orders = {
         })
       }
     } catch (error) {
-      console.log(error)
+      console.log('orderTag() error: ', error)
     }
   },
 
@@ -76,25 +86,26 @@ export const Orders = {
 
     if (shopSessions.length > 0) {
       for (const session of shopSessions) {
-        console.log('session', session)
         if (session.accessToken) shopSession = session;
       }
     }
-    // console.log('shopDomain', shopDomain)
-    // console.log('shopSession', shopSession)
+
+    console.log('fulfilled() shopDomain', shopDomain)
+    console.log('fulfilled() shopSession', shopSession)
     try {
       const payload = JSON.parse(_body);
+      console.log('fulfilled() payload customer', payload);
       
       // discount applyed for order
       if(shopSession && payload) {
         this.orderTag(shopSession, payload)
       }
+      
       if(shopSession && payload && payload.discount_applications && payload.discount_applications.length > 0){
         if(payload.customer && !payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')){
           // const discounts = [...payload.discount_applications, { title: '5CZMC1Q' }, { title: '' }]; // static discounts for testing
           const discounts = payload.discount_applications;
           console.log('Order applyed discounts', discounts);
-          console.log('payload customer', payload);
 
           const everflowDiscount = await this.getEverflowDiscounts(discounts.filter(d => d).map(d => d.title))
           console.log('Everflow matched discount', everflowDiscount)

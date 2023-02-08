@@ -115,11 +115,15 @@ export function checkIfProductsInOrder(orders) {
     const discountProductsArray = process.env.SAMPLE_PRODUCTS? process.env.SAMPLE_PRODUCTS.split(',') : [7415645274157, 7391379488813];
     const contains = discountProductsArray.some(id => productIds.includes(id.toString()));
 
+    console.log('checkIfProductsInOrder() productIds', productIds)
+    console.log('checkIfProductsInOrder() discountProductsArray', discountProductsArray)
+    console.log('checkIfProductsInOrder() contains', contains)
+
     if(contains){
       valid = false
     }
   } catch (error) {
-    console.log(error)
+    console.log('checkIfProductsInOrder() error', error)
   }
 
   return valid
