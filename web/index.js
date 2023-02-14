@@ -78,6 +78,7 @@ export async function createServer(
   const generateSession = async () => {
     try {
       let shop = readFileSync('storage/shop.json');
+      console.log('generateSession shop', shop)
       // @ts-ignore
       let shopData = JSON.parse(shop)
       console.log('generateSession() shopData', shopData)
