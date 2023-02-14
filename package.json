@@ -16,6 +16,5 @@
     "@shopify/cli": "3.24.1",
     "cron": "^2.1.0",
     "dotenv": "^16.0.3"
-  },
-  "author": "Integer"
+  }
 }
