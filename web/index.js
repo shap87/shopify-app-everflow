@@ -323,6 +323,10 @@ export async function createServer(
     let data = null;
 
     try {
+      if(session){
+        writeFileSync('storage/shop.json', JSON.stringify(session));
+      }
+
       const response = await getCustomerSegment(session, `gid://shopify/Segment/${process.env.CUSTOMER_SEGMENT_ID}`)
       data = await response
     } catch (e) {
@@ -345,6 +349,10 @@ export async function createServer(
     let data = null;
 
     try {
+      if(session){
+        writeFileSync('storage/shop.json', JSON.stringify(session));
+      }
+
       const response = await getCountOfDiscountCodes(session, process.env.DISCOUNTS_PRICE_RULE_ID)
       data = response
     } catch (e) {
@@ -458,6 +466,10 @@ export async function createServer(
     let data = null;
 
     try {
+      if(session){
+        writeFileSync('storage/shop.json', JSON.stringify(session));
+      }
+      
       const response = await getPriceRule(session, process.env.DISCOUNTS_PRICE_RULE_ID)
       data = response
     } catch (e) {
