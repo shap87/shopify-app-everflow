@@ -27,5 +27,3 @@ extensions/*/build
 
 # Node library SQLite database
 web/database.sqlite
-
-web/storage/shop.json
