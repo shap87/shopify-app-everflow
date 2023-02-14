@@ -2,7 +2,7 @@
 import * as dotenv from 'dotenv'
 dotenv.config()
 import { Shopify } from "@shopify/shopify-api";
-import { addCustomerTags } from './helpers/customer.js'
+import { addCustomerTags, ordersByQuery } from './helpers/customer.js'
 import { getEverflowDiscount } from './helpers/everflow.js';
 import { DataType } from '@shopify/shopify-api';
 
@@ -42,40 +42,57 @@ export const Orders = {
     }
   },
 
+  checkForDiscountedProducts: function (payload) {
+    const productIds = payload.line_items.map(p => p.product_id.toString());
+    const discountProductsArray = process.env.SAMPLE_PRODUCTS? process.env.SAMPLE_PRODUCTS.split(',') : [7415645274157, 7391379488813];
+    const contains = discountProductsArray.some(id => productIds.includes(id.toString()));
+
+    console.log('orderTag() productIds', productIds);
+    console.log('orderTag() discountProductsArray', discountProductsArray);
+    console.log('orderTag() contains', contains);
+
+    return contains;
+  },
+
+  updateOrderTags: async function (session, orderId, tags) {
+    const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
+    console.log('updateOrderTags() tags: ', tags)
+
+    await client.put({ 
+      path: `orders/${orderId}`, 
+      data: JSON.stringify({
+        order: {
+          id: orderId,
+          tags,
+        }
+      }), type: DataType.JSON
+    })
+  },
+
   orderTag: async function (session, payload) {
-    console.log('orderTag() session', session)
-    console.log('orderTag() session', payload)
+    console.log('orderTag() session', session);
+    console.log('orderTag() session', payload);
+
     try {
-      const productIds = payload.line_items.map(p => p.product_id.toString());
-      const discountProductsArray = process.env.SAMPLE_PRODUCTS? process.env.SAMPLE_PRODUCTS.split(',') : [7415645274157, 7391379488813];
-      const contains = discountProductsArray.some(id => productIds.includes(id.toString()));
       const orderId = payload.id;
       const orderTags = payload.tags;
-      
-      console.log('orderTag() productIds', productIds)
-      console.log('orderTag() discountProductsArray', discountProductsArray)
-      console.log('orderTag() contains', contains)
-      console.log('orderTag() orderId', orderId)
-      console.log('orderTag() orderTags', orderTags)
 
-      if(contains) {
+      console.log('orderTag() orderId', orderId);
+      console.log('orderTag() orderTags', orderTags);
+
+      if(this.checkForDiscountedProducts(payload)) { 
         const tag = [payload.shipping_address?.address1, payload.shipping_address?.zip].join('').replace(/\s/g, '').slice(0, 40);
-        const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
-        console.log('orderTag() tag', tag)
-        console.log('orderTag() tag', tag)
+        const tags = `${orderTags}, ${tag}`;
 
-        await client.put({ 
-          path: `orders/${orderId}`, 
-          data: JSON.stringify({
-            order: {
-              id: orderId,
-              tags: `${orderTags}, ${tag}`,
-            }
-          }), type: DataType.JSON
-        })
+        await this.updateOrderTags(session, orderId, tags);
+
+        return true
       }
+
+      return false
     } catch (error) {
       console.log('orderTag() error: ', error)
+      return false
     }
   },
 
@@ -129,8 +146,77 @@ export const Orders = {
           return true
         }
       }
+      return false
     } catch (error) {
       console.log('err', error)
+      return false
+    }
+  },
+
+  cancelOrder: async function (session, orderId, tags) {
+    const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
+    console.log('cancelOrder() orderId', orderId)
+
+    try {
+      if (session && orderId) {
+        await client.post({ 
+          path: `orders/${orderId}/cancel`, 
+          data: JSON.stringify({
+            order: {
+              id: orderId,
+            }
+          }), type: DataType.JSON
+        });
+        
+        const orderTags = `${tags}, CANCELATION_REASON: discount used`;
+        await this.updateOrderTags(session, orderId, orderTags);
+
+        return true
+      }
+      return false
+    } catch (e) {
+      console.log(`Failed to cancel order: ${orderId}: ${e.message}`);
+      return false
+    }
+  },
+
+  create: async function (shopDomain, _body) {
+    // @ts-ignore
+    const shopSessions = await Shopify.Context.SESSION_STORAGE.findSessionsByShop(shopDomain);
+    let shopSession = null;
+
+    if (shopSessions.length > 0) {
+      for (const session of shopSessions) {
+        if (session.accessToken) shopSession = session;
+      }
+    }
+
+    console.log('create() shopDomain', shopDomain)
+    console.log('create() shopSession', shopSession)
+
+    try {
+      const payload = JSON.parse(_body);
+      console.log('orders.create() payload', payload);
+
+      if(shopSession && payload && payload.shipping_address) {
+        if(this.checkForDiscountedProducts(payload)) {
+          const shipping_address = payload.shipping_address;
+          const tag = [shipping_address?.address1, shipping_address?.zip].join('').replace(/\s/g, '').slice(0, 40);
+          const orders = await ordersByQuery(shopSession, 'tag:' + tag);
+
+          console.log('create() tag', tag);
+          console.log('orders.length', orders.length);
+
+          if (orders && orders.length && orders.length > 0) {
+            await this.cancelOrder(shopSession, payload.id, payload.tags);
+            return true
+          }
+        }
+      }
+
+      return false
+    } catch (error) {
+      console.log('orders.create() error: ', error)
       return false
     }
   }

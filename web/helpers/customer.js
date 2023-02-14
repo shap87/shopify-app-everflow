@@ -62,7 +62,7 @@ export async function ordersByQuery(session, query, first = 1) {
         },
       },
     });
-
+    
     const data = ordersReponse.body.data.orders;
     let orders = data.edges.map(item => item.node);
 

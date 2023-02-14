@@ -69,4 +69,13 @@ export function setupGDPRWebHooks(path) {
       await Orders.fulfilled(shop, _body)
     }
   });
+
+  Shopify.Webhooks.Registry.addHandler("ORDERS_CREATE", {
+    path,
+    webhookHandler: async (_topic, shop, _body) => {
+      console.log(`Webhook called: ${_topic} for ${shop}`)
+
+      await Orders.create(shop, _body)
+    }
+  });
 }
