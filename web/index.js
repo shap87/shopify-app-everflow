@@ -548,9 +548,9 @@ export async function createServer(
 
             res.status(200).send({ success: status === 200, error, data, message: 'File uploaded successfully' });
           })
-          .catch(err => {
-            console.log(err)
-            res.status(500).send({ success: status === 200, error: err, data, message: 'Error uploading file' });
+          .catch(error => {
+            console.log('s3.upload ', error)
+            res.status(500).send({ success: status === 200, error, data, message: 'Error uploading file' });
           })
       } else {
         console.log('no file provided')
