@@ -2,7 +2,7 @@
 import * as dotenv from 'dotenv'
 dotenv.config()
 import { Shopify } from "@shopify/shopify-api";
-import { addCustomerTags, ordersByQuery } from './helpers/customer.js'
+import { addCustomerTags, hubspotSearch, hubspotUpdateCustomer, ordersByQuery } from './helpers/customer.js'
 import { getEverflowDiscount } from './helpers/everflow.js';
 import { DataType } from '@shopify/shopify-api';
 
@@ -70,8 +70,8 @@ export const Orders = {
   },
 
   orderTag: async function (session, payload) {
-    console.log('orderTag() session', session);
-    console.log('orderTag() session', payload);
+    // console.log('orderTag() session', session);
+    console.log('orderTag() payload', payload);
 
     try {
       const orderId = payload.id;
@@ -92,6 +92,41 @@ export const Orders = {
       return false
     } catch (error) {
       console.log('orderTag() error: ', error)
+      return false
+    }
+  },
+
+  updateHubspotCustomer: async function (payload, discountCodes, property) {
+    if(!payload.customer?.email) return false
+
+    try {
+      const searchResults = await hubspotSearch('email', payload.customer.email);
+
+      if(searchResults && searchResults.results && searchResults.results.length > 0){
+        const results = searchResults.results;
+
+        if(results && results.length > 0){
+          const id = results[0].id;
+          const hubDiscounts = results[0]?.properties?.order_discount_code || '';
+          // const hubEverflowCode = results[0]?.properties?.everflow_code;
+
+          if(id) {
+            if(property === 'everflow_code') {
+              console.log('if(property === everflow_code) {')
+              await hubspotUpdateCustomer(id, property, discountCodes[0]?.[0]?.coupon_code)
+            } else if (property === 'order_discount_code'){
+              console.log('if(property === order_discount_code) {')
+              const orderDiscounts = discountCodes.map(d => d.title).filter(d => d);
+              const mergedDiscounts = [...new Set([...orderDiscounts, ...hubDiscounts.split(',')])].join(',');
+
+              await hubspotUpdateCustomer(id, property, mergedDiscounts)
+            }
+          }
+        }
+      }
+    
+    } catch (error) {
+      console.log('updateHubspotCustomer(): ', error)
       return false
     }
   },
@@ -119,6 +154,8 @@ export const Orders = {
       }
       
       if(shopSession && payload && payload.discount_applications && payload.discount_applications.length > 0){
+        // console.log('payload.discount_applications', payload.discount_applications)
+
         if(payload.customer && !payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')){
           // const discounts = [...payload.discount_applications, { title: '5CZMC1Q' }, { title: '' }]; // static discounts for testing
           const discounts = payload.discount_applications;
@@ -133,18 +170,19 @@ export const Orders = {
 
             // add customer tag
             const response = await this.addTagToCustomer(shopSession, customerId, 'everflow_linked')
-
-            console.log('Add customer tag response body', response?.body)
+            // console.log('Add customer tag response body', response?.body)
 
             if(!response || response.message){ // error
               throw new Error(`${response.message}`);
             }
 
-            return true
+            await this.updateHubspotCustomer(payload, everflowDiscount, 'everflow_code')
           }
-        } else {
-          return true
         }
+
+        await this.updateHubspotCustomer(payload, payload.discount_applications, 'order_discount_code')
+        
+        return true
       }
       return false
     } catch (error) {
