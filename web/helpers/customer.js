@@ -128,3 +128,64 @@ export function checkIfProductsInOrder(orders) {
 
   return valid
 }
+
+export async function hubspotSearch(prop = 'email', propValue) {
+  if(!prop || !propValue) throw new Error(`Error\n check (property, value) in hubspotSearch() method`);
+
+  try {
+    const response = await fetch("https://api.hubapi.com/crm/v3/objects/contacts/search", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify({
+        "filterGroups":[
+          {
+            "filters":[
+              {
+                "propertyName": prop,
+                "operator": "EQ",
+                "value": propValue
+              }
+            ]
+          }
+        ],
+        "properties": ["email", "everflow_code", "order_discount_code"]
+      })
+    })
+    const data = await response.json()
+    console.log('hubspotSearch() resp', data)
+
+    return data
+  } catch (error) {
+    console.log('hubspotSearch() ', error)
+    return error
+  }
+}
+
+export async function hubspotUpdateCustomer(id, property, value) {
+  if(!id || !property || !value) throw new Error(`Error\n check (id, property, value) in hubspotUpdateCustomer() method`);
+  console.log(id, property, value)
+  try {
+    const response = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`
+      },
+      body: JSON.stringify({
+        "properties": {
+          [property]: value
+        }
+      })
+    })
+    const data = await response.json()
+    console.log('hubspotUpdateCustomer() resp', data)
+
+    return data
+  } catch (error) {
+    console.log('hubspotUpdateCustomer() ', error)
+    return error
+  }
+}
