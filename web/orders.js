@@ -98,10 +98,10 @@ export const Orders = {
 
   updateHubspotCustomer: async function (payload, discountCodes, property) {
     if(!payload.customer?.email) return false
-
+    console.log('updateHubspotCustomer() email: ', payload.customer.email)
     try {
       const searchResults = await hubspotSearch('email', payload.customer.email);
-
+      console.log('updateHubspotCustomer() searchResults: ', searchResults)
       if(searchResults && searchResults.results && searchResults.results.length > 0){
         const results = searchResults.results;
 
@@ -109,6 +109,7 @@ export const Orders = {
           const id = results[0].id;
           const hubDiscounts = results[0]?.properties?.order_discount_code || '';
           // const hubEverflowCode = results[0]?.properties?.everflow_code;
+          console.log('updateHubspotCustomer() id, hubDiscounts: ', id, hubDiscounts)
 
           if(id) {
             if(property === 'everflow_code') {
@@ -179,7 +180,7 @@ export const Orders = {
             await this.updateHubspotCustomer(payload, everflowDiscount, 'everflow_code')
           }
         }
-
+        console.log('await this.updateHubspotCustomer (other discounts)')
         await this.updateHubspotCustomer(payload, payload.discount_applications, 'order_discount_code')
         
         return true
