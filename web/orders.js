@@ -117,7 +117,7 @@ export const Orders = {
               await hubspotUpdateCustomer(id, property, discountCodes[0]?.[0]?.coupon_code)
             } else if (property === 'order_discount_code'){
               console.log('if(property === order_discount_code) {')
-              const orderDiscounts = discountCodes.map(d => d.title).filter(d => d);
+              const orderDiscounts = discountCodes.map(d => d.code? d.code : d.title? d.title : `${d?.value}:${d?.value_type}`).filter(d => d);
               const mergedDiscounts = [...new Set([...orderDiscounts, ...hubDiscounts.split(',')])].join(',');
 
               await hubspotUpdateCustomer(id, property, mergedDiscounts)
@@ -155,9 +155,9 @@ export const Orders = {
       }
       
       if(shopSession && payload && payload.discount_applications && payload.discount_applications.length > 0){
-        // console.log('payload.discount_applications', payload.discount_applications)
+        console.log('payload.discount_applications', payload.discount_applications)
 
-        if(payload.customer && !payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')){
+        if(payload.customer) { // && !payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')){
           // const discounts = [...payload.discount_applications, { title: '5CZMC1Q' }, { title: '' }]; // static discounts for testing
           const discounts = payload.discount_applications;
           console.log('Order applyed discounts', discounts);
@@ -167,14 +167,16 @@ export const Orders = {
 
           // order discount matched with everflow discount
           if(everflowDiscount){
-            const customerId = `gid://shopify/Customer/${payload.customer.id}`
-
-            // add customer tag
-            const response = await this.addTagToCustomer(shopSession, customerId, 'everflow_linked')
-            // console.log('Add customer tag response body', response?.body)
-
-            if(!response || response.message){ // error
-              throw new Error(`${response.message}`);
+            if(!payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')) {
+              const customerId = `gid://shopify/Customer/${payload.customer.id}`
+  
+              // add customer tag
+              const response = await this.addTagToCustomer(shopSession, customerId, 'everflow_linked')
+              // console.log('Add customer tag response body', response?.body)
+  
+              if(!response || response.message){ // error
+                throw new Error(`${response.message}`);
+              }
             }
 
             await this.updateHubspotCustomer(payload, everflowDiscount, 'everflow_code')
