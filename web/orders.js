@@ -162,7 +162,7 @@ export const Orders = {
           const discounts = payload.discount_applications;
           console.log('Order applyed discounts', discounts);
 
-          const everflowDiscount = await this.getEverflowDiscounts(discounts.filter(d => d).map(d => d.title))
+          const everflowDiscount = await this.getEverflowDiscounts(discounts.filter(d => d && d?.title))
           console.log('Everflow matched discount', everflowDiscount)
 
           // order discount matched with everflow discount
