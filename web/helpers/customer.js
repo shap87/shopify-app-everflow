@@ -151,7 +151,8 @@ export async function hubspotSearch(prop = 'email', propValue) {
             ]
           }
         ],
-        "properties": ["email", "everflow_code", "order_discount_code"]
+        "properties": ["email", "everflow_code", "order_discount_code"],
+        "associations": ["deals"]
       })
     })
     const data = await response.json()
@@ -160,6 +161,27 @@ export async function hubspotSearch(prop = 'email', propValue) {
     return data
   } catch (error) {
     console.log('hubspotSearch() ', error)
+    return error
+  }
+}
+
+export async function hubspotGetCustomer(id) {
+  if(!id) throw new Error(`Error\n check (id) in hubspotGetCustomer() method`);
+
+  try {
+    const response = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${id}?associations=deals`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`
+      }
+    })
+    const data = await response.json()
+    console.log('hubspotGetCustomer() resp', data)
+
+    return data
+  } catch (error) {
+    console.log('hubspotGetCustomer() ', error)
     return error
   }
 }
@@ -185,7 +207,50 @@ export async function hubspotUpdateCustomer(id, property, value) {
 
     return data
   } catch (error) {
-    console.log('hubspotUpdateCustomer() ', error)
+    console.log('hubspotUpdatedCustomer() ', error)
+    return error
+  }
+}
+
+export async function hubspotUpdateCustomerDeal(id) {
+  if(!id) throw new Error(`Error\n check (id) in hubspotUpdateCustomerDeal() method`);
+
+  try {
+    const response = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${id}?associations=deals`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`
+      }
+    })
+    const deals = await response.json()
+    console.log('hubspotGetCustomerDeals() resp', deals)
+
+    if(deals && deals?.associations?.deals?.results?.length > 0){
+      const dealResults = deals.associations.deals.results;
+      const lngth = dealResults.length;
+      const lastDeal = deals.associations.deals.results[lngth - 1];
+
+      if(lastDeal && lastDeal.id){
+        const response = await fetch(`https://api.hubapi.com/crm/v3/objects/deals/${lastDeal.id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${process.env.HUBSPOT_ACCESS_TOKEN}`
+          },
+          body: JSON.stringify({
+            "properties": {
+              "reconvert_upsell": "true"
+            }
+          })
+        })
+        const updatedDeal = await response.json()
+        console.log("hubspotUpdatedCustomerDeal() resp", updatedDeal)
+      }
+    }
+    return true
+  } catch (error) {
+    console.log('hubspotUpdateCustomerDeal() ', error)
     return error
   }
 }

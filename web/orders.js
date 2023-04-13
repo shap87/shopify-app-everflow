@@ -2,7 +2,7 @@
 import * as dotenv from 'dotenv'
 dotenv.config()
 import { Shopify } from "@shopify/shopify-api";
-import { addCustomerTags, hubspotSearch, hubspotUpdateCustomer, ordersByQuery } from './helpers/customer.js'
+import { addCustomerTags, hubspotSearch, hubspotUpdateCustomer, hubspotUpdateCustomerDeal, ordersByQuery } from './helpers/customer.js'
 import { getEverflowDiscount } from './helpers/everflow.js';
 import { DataType } from '@shopify/shopify-api';
 
@@ -10,24 +10,27 @@ export const Orders = {
   getEverflowDiscounts: async function(arrayOfDiscounts = []) {
     if(arrayOfDiscounts.length <= 0) return false;
 
-    let stopped = false
-    let length = arrayOfDiscounts.length
-    let everflowCouponCodes = []
+    try {
+      let stopped = false
+      let length = arrayOfDiscounts.length
+      let everflowCouponCodes = []
 
-    while(!stopped) {
-      let res = await getEverflowDiscount(arrayOfDiscounts[length - 1])
+      while(!stopped) {
+        let res = await getEverflowDiscount(arrayOfDiscounts[length - 1])
 
-      if(res && res.coupon_codes && res.coupon_codes.length > 0) {
-        everflowCouponCodes.push(res.coupon_codes)
+        if(res && res.coupon_codes && res.coupon_codes.length > 0) {
+          everflowCouponCodes.push(res.coupon_codes)
+        }
+
+        length -= 1;
+        if (length <= 0) stopped = true
       }
 
-      length -= 1;
-      if (length <= 0) stopped = true
+      if(everflowCouponCodes.length > 0) return everflowCouponCodes
+    } catch (error) {
+      console.log("getEverflowDiscounts() ", error)
+      return false;
     }
-
-    if(everflowCouponCodes.length > 0) return everflowCouponCodes
-
-    return false;
   },
 
   addTagToCustomer: async function (session, customerId, tag = 'everflow_linked') {
@@ -96,12 +99,17 @@ export const Orders = {
     }
   },
 
-  updateHubspotCustomer: async function (payload, discountCodes, property) {
+  updateHubspotCustomer: async function (payload, discountCodes, property, codeToDelete) {
     if(!payload.customer?.email) return false
-    console.log('updateHubspotCustomer() email: ', payload.customer.email)
+
+    console.log('updateHubspotCustomer() email: ', payload.customer.email);
+
     try {
+      // Searching for customer in HubSpot
       const searchResults = await hubspotSearch('email', payload.customer.email);
-      console.log('updateHubspotCustomer() searchResults: ', searchResults)
+
+      console.log('updateHubspotCustomer() searchResults: ', searchResults);
+
       if(searchResults && searchResults.results && searchResults.results.length > 0){
         const results = searchResults.results;
 
@@ -109,23 +117,48 @@ export const Orders = {
           const id = results[0].id;
           const hubDiscounts = results[0]?.properties?.order_discount_code || '';
           // const hubEverflowCode = results[0]?.properties?.everflow_code;
-          console.log('updateHubspotCustomer() id, hubDiscounts: ', id, hubDiscounts)
+          console.log('updateHubspotCustomer() id, hubDiscounts: ', id, hubDiscounts);
 
           if(id) {
             if(property === 'everflow_code') {
-              console.log('if(property === everflow_code) {')
-              await hubspotUpdateCustomer(id, property, discountCodes[0]?.[0]?.coupon_code)
+              console.log('property === everflow_code');
+              // Update HubSpot customer everflow_code property
+              await hubspotUpdateCustomer(id, property, discountCodes);
+
             } else if (property === 'order_discount_code'){
-              console.log('if(property === order_discount_code) {')
-              const orderDiscounts = discountCodes.map(d => d.code? d.code : d.title? d.title : `${d?.value}:${d?.value_type}`).filter(d => d);
+              console.log('property === order_discount_code');
+
+              // Get all discount codes from order
+              let orderDiscounts = discountCodes.map(d => d.code? d.code : d.title? d.title : `${d?.value}:${d?.value_type}`).filter(d => d);
+
+              // If used everflow discount delete it from other disocunts array
+              if(codeToDelete) {
+                console.log('codeToDelete', codeToDelete, orderDiscounts);
+                let index = orderDiscounts && orderDiscounts.indexOf(codeToDelete);
+                
+                if(index >= 0){
+                  delete orderDiscounts[index];
+                  orderDiscounts = orderDiscounts.filter(el => el);
+                }
+                console.log('orderDiscounts after delete', orderDiscounts);
+              }
+
+              // Merge everflow discounts with other disocunts
               const mergedDiscounts = [...new Set([...orderDiscounts, ...hubDiscounts.split(',')])].join(',');
 
-              await hubspotUpdateCustomer(id, property, mergedDiscounts)
+              await hubspotUpdateCustomer(id, property, mergedDiscounts);
+
+              //Update last customer deal when "Total discount on product" discount applyed
+              if(orderDiscounts.indexOf("Total discount on product") >= 0){
+                console.log("hubspotUpdateCustomerDeal()")
+                await hubspotUpdateCustomerDeal(id)
+              }
             }
+            return true
           }
         }
       }
-    
+      return false
     } catch (error) {
       console.log('updateHubspotCustomer(): ', error)
       return false
@@ -143,9 +176,9 @@ export const Orders = {
       }
     }
 
-    console.log('fulfilled() shopDomain', shopDomain)
+    // console.log('fulfilled() shopDomain', shopDomain)
     console.log('fulfilled() shopSession', shopSession)
-    try {
+    // try {
       const payload = JSON.parse(_body);
       console.log('fulfilled() payload customer', payload);
       
@@ -155,6 +188,7 @@ export const Orders = {
       }
       
       if(shopSession && payload && payload.discount_applications && payload.discount_applications.length > 0){
+        let everflowDisCode = null;
         console.log('payload.discount_applications', payload.discount_applications)
 
         if(payload.customer) { // && !payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')){
@@ -168,19 +202,18 @@ export const Orders = {
             )
             .filter(d => d && !/\s/g.test(d))
           )
-            // .filter(d => 
-            //   d && d?.code? d.code : d?.title
-            // )
-            // .filter(d => d && !/\s/g.test(d)))
+
           console.log('Everflow matched discount', everflowDiscount)
 
           // order discount matched with everflow discount
           if(everflowDiscount){
+            everflowDisCode = everflowDiscount[0]?.[0]?.coupon_code;
+
             if(!payload.customer.tags.split(',').map(tag => tag.trim()).includes('everflow_linked')) {
-              const customerId = `gid://shopify/Customer/${payload.customer.id}`
+              const customerId = `gid://shopify/Customer/${payload.customer.id}`;
   
               // add customer tag
-              const response = await this.addTagToCustomer(shopSession, customerId, 'everflow_linked')
+              const response = await this.addTagToCustomer(shopSession, customerId, 'everflow_linked');
               // console.log('Add customer tag response body', response?.body)
   
               if(!response || response.message){ // error
@@ -188,19 +221,20 @@ export const Orders = {
               }
             }
 
-            await this.updateHubspotCustomer(payload, everflowDiscount, 'everflow_code')
+            everflowDisCode && await this.updateHubspotCustomer(payload, everflowDisCode, 'everflow_code');
           }
         }
-        console.log('await this.updateHubspotCustomer (other discounts)')
-        await this.updateHubspotCustomer(payload, payload.discount_applications, 'order_discount_code')
+        console.log('await this.updateHubspotCustomer (other discounts)');
+
+        await this.updateHubspotCustomer(payload, payload.discount_applications, 'order_discount_code', everflowDisCode);
         
         return true
       }
       return false
-    } catch (error) {
-      console.log('err', error)
-      return false
-    }
+    // } catch (error) {
+    //   console.log('err', error)
+    //   return false
+    // }
   },
 
   cancelOrder: async function (session, orderId, tags) {
