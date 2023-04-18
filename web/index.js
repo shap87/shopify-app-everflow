@@ -136,14 +136,16 @@ export async function createServer(
           const dividedArrays = divideArray(mismatched, 100) || []
   
           if (dividedArrays.length > 0) {
-            let count = 0
+            // let count = 0;
+            // let data = {};
+
             for (const arr of dividedArrays) {
               //process.env.DISCOUNTS_PRICE_RULE_ID
               const response = await createDiscountCodeJob(session, process.env.DISCOUNTS_PRICE_RULE_ID, arr.map(el => ({ code: el?.coupon_code })))
 
-              // @ts-ignore
-              data[count] = response.body.discount_code_creation
-              count += 1
+
+              // data[count] = response?.body?.discount_code_creation
+              // count += 1
             }
           }
         }
@@ -417,7 +419,6 @@ export async function createServer(
         const shopifyDiscounts = discounts || []
 
         const mismatched = everflowDiscounts.filter((item) => !shopifyDiscounts.some((disc) => disc.code === item.coupon_code))
-        // console.log('mismatched', mismatched)
         if (mismatched.length > 0) {
           const dividedArrays = divideArray(mismatched, 100) || []
   

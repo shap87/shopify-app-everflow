@@ -187,8 +187,9 @@ export async function hubspotGetCustomer(id) {
 }
 
 export async function hubspotUpdateCustomer(id, property, value) {
+  console.log('hubspotUpdateCustomer() id, property, value', id, property, value)
   if(!id || !property || !value) throw new Error(`Error\n check (id, property, value) in hubspotUpdateCustomer() method`);
-  console.log(id, property, value)
+
   try {
     const response = await fetch(`https://api.hubapi.com/crm/v3/objects/contacts/${id}`, {
       method: 'PATCH',
