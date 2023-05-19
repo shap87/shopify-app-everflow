@@ -2,4 +2,4 @@
 
 # price_rules
 
-scopes = "read_fulfillments,write_customers,write_discounts,write_price_rules,read_customers,read_orders,write_orders,read_products"
+scopes = "read_fulfillments,write_customers,write_discounts,write_price_rules,read_customers,orders,read_orders,write_orders,read_products"
