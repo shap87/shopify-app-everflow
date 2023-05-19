@@ -140,9 +140,7 @@ export async function createServer(
             // let data = {};
 
             for (const arr of dividedArrays) {
-              //process.env.DISCOUNTS_PRICE_RULE_ID
               const response = await createDiscountCodeJob(session, process.env.DISCOUNTS_PRICE_RULE_ID, arr.map(el => ({ code: el?.coupon_code })))
-
 
               // data[count] = response?.body?.discount_code_creation
               // count += 1

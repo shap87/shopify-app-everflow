@@ -33,6 +33,31 @@ export const Orders = {
     }
   },
 
+  getOrderFields: async function(session, orderId, fields = 'id') {
+    const client = new Shopify.Clients.Rest(session.shop, session.accessToken);
+    console.log('getOrderFields() orderId', orderId)
+
+    try {
+      if (session && orderId) {
+        let { body } = await client.get({ 
+          path: `orders/${orderId}`, 
+          data: JSON.stringify({
+            order: {
+              id: orderId,
+              fields
+            } 
+          }), type: DataType.JSON
+        });
+        
+        return body;
+      }
+      return false
+    } catch (e) {
+      console.log(`Failed to get order: ${orderId}: ${e.message}`);
+      return false
+    }
+  },
+
   addTagToCustomer: async function (session, customerId, tag = 'everflow_linked') {
     try {
       const response = await addCustomerTags(session, customerId, tag);
@@ -295,6 +320,31 @@ export const Orders = {
             await this.cancelOrder(shopSession, payload.id, payload.tags);
             return true
           }
+        }
+      }
+
+      if(shopSession && payload && payload.note_attributes) {
+        const note_attributes = payload?.note_attributes;
+        console.log('note_attributes', note_attributes);
+
+        const utm_campaign = note_attributes && note_attributes.filter(v => v.name === 'utm_campaign')[0];
+        
+        if(utm_campaign){
+          console.log('utm_campaign', utm_campaign);
+          const orderId = payload.id;
+          const orderTags = payload.tags;
+
+          // @ts-ignore
+          let { order } = await this.getOrderFields(shopSession, orderId, 'tags');
+
+          if(order) {
+            const tags = order && order.tags ? `${order.tags}, ${utm_campaign.value}` : `${utm_campaign.value}`;
+            console.log('tags', tags);
+            await this.updateOrderTags(shopSession, orderId, tags);
+            
+            return true
+          }
+          return false
         }
       }
 
